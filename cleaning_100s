@@ -11,28 +11,51 @@ rm(list = ls())
 
 library(dplyr)
 
+#--------------------------------------------------
+# Study 1: Attentive group (participant IDs in 100s)
+#--------------------------------------------------
+
 # load the directory 
 CSV_directory_100 <- "/Users/music/Desktop/code/priming/data_in/study1/100s"
 
-# -------------------------------
-# Study 1 - 100s
 
-# load csv's 
+#--------------------------------------------------
+# Locate all participant CSV files
+#--------------------------------------------------
+# Create a list containing the full path of every CSV file
+# in the Study 1 attentive-group data directory.
+
 files_100 <- list.files(
   CSV_directory_100,
   pattern = "\\.csv$",
   full.names = TRUE
 )
 
+# Create an empty list in which each cleaned participant
+# dataset will be stored before the files are combined.
 all_data_100 <- list()
+
+# Check the number of participant files found.
 length(files_100)
 
-# start the loop
+
+#--------------------------------------------------
+# Import and prepare each participant file
+#--------------------------------------------------
+
+# Loop through the CSV files one at a time. Each file is imported,
+# checked for the required variables, reformatted, and stored in
+# the all_data_100 list
 for (i in seq_along(files_100)) {
   
   file_path <- files_100[i]
   
-  # Try reading the CSV normally
+  #------------------------------------------------
+  # Import the CSV file
+  #------------------------------------------------
+  
+  # First attempt to read the file using a comma delimiter.
+  
   df <- read.csv(
     file_path,
     stringsAsFactors = FALSE,
@@ -40,7 +63,9 @@ for (i in seq_along(files_100)) {
     sep = ","
   )
   
-  # If only one column, try semicolon
+  # Some files may use a semicolon delimiter. If the first import
+  # produces only one column, try importing the file again using
+  # a semicolon
   if (ncol(df) == 1) {
     df <- read.csv(
       file_path,
@@ -50,7 +75,8 @@ for (i in seq_along(files_100)) {
     )
   }
   
-  # If still one column, try tab
+  # If the file still contains only one column, try importing it
+  # using a tab delimiter.
   if (ncol(df) == 1) {
     df <- read.csv(
       file_path,
@@ -60,16 +86,27 @@ for (i in seq_along(files_100)) {
     )
   }
   
-  # check all column names exist
+  #------------------------------------------------
+  # Check that all required variables are present
+  #------------------------------------------------
+  
+  # Define all variables required by the cleaning pipeline.
+  # Files missing any of these columns are skipped and identified
+  # with a warning.
   
   required_cols_100 <- c(
     "bloc_nr",
+    "datetime",
     "list_type",
+    "prime_name",
     "prime_type",
     "response_correct",
+    "response_keyboard_sentence",
+    "response_time_keyboard_sentence",
     "sentence_name",
     "sentence_type",
     "subject_nr",
+    "title",
     "total_responses"
   )
   
@@ -78,7 +115,14 @@ for (i in seq_along(files_100)) {
     next
   }
   
-  # rename columns
+  #------------------------------------------------
+  # Rename variables
+  #------------------------------------------------
+  
+  # Rename the original task-output variables using shorter and
+  # more interpretable names that will be used throughout the
+  # cleaning and analysis scripts.
+  
   df <- df %>%
     rename(
       block = bloc_nr,
@@ -90,11 +134,21 @@ for (i in seq_along(files_100)) {
       response_time = response_time_keyboard_sentence
     )
   
-  # order
+  #------------------------------------------------
+  # Order trials and calculate within-block order
+  #------------------------------------------------
+  
+  # Arrange trials chronologically within each participant and block
+  # using the cumulative response number recorded by the experiment.
   df <- df %>%
     arrange(ID, block, response_order)
   
-  # response order
+  #------------------------------------------------
+  # Order trials and calculate within-block order
+  #------------------------------------------------
+  
+  # Arrange trials chronologically within each participant and block
+  # using the cumulative response number recorded by the experiment.
   df <- df %>%
     group_by(ID, block) %>%
     mutate(
@@ -102,7 +156,12 @@ for (i in seq_along(files_100)) {
     ) %>%
     ungroup()
   
-  # types of variables 
+  #------------------------------------------------
+  # Set variable types
+  #------------------------------------------------
+  
+  # Convert categorical variables to factors and variables representing
+  # trial order, counts, or accuracy to numeric format.
   df <- df %>%
     mutate(
       ID = factor(ID),
@@ -116,7 +175,13 @@ for (i in seq_along(files_100)) {
       response_correct = as.numeric(response_correct)
     )
   
-  # re-order everything 
+  #------------------------------------------------
+  # Reorder variables
+  #------------------------------------------------
+  
+  # Arrange the columns in a logical order, beginning with participant
+  # and experimental-design information, followed by trial information
+  # and behavioural responses.
   df <- df %>%
     relocate(
       ID,
@@ -135,7 +200,12 @@ for (i in seq_along(files_100)) {
       response_correct
     )
   
-  # change the date 
+  #------------------------------------------------
+  # Convert the testing date
+  #------------------------------------------------
+  
+  # Extract the calendar date from the original date-time string.
+  # The testing time is not retained in this variable.
   df <- df %>%
     mutate(
       date = as.Date(
@@ -143,23 +213,47 @@ for (i in seq_along(files_100)) {
         format = "%a %b %d %H:%M:%S %Y"
       )
     )
-  
+  # Store the cleaned participant dataset in the list.
   all_data_100[[i]] <- df
   
 }
 
-# merge all data together into one 
+#--------------------------------------------------
+# Combine all attentive-group participant files
+#--------------------------------------------------
+
+# Merge the cleaned participant datasets into one trial-level dataset.
 data_100 <- bind_rows(all_data_100)
 
-# sanity check
+#--------------------------------------------------
+# Check for completely empty rows
+#--------------------------------------------------
+
+# Identify rows in which every variable is either missing or blank.
+# The expected number of completely empty rows is zero.
 
 empty_rows <- data_100 %>%
   filter(if_all(everything(), ~ is.na(.) | . == ""))
 
 nrow(empty_rows)
 
-#---------------------------------------------------------#
-# fixing keyboard and re-calculating 
+
+#--------------------------------------------------
+# Recalculate response correctness
+#--------------------------------------------------
+
+# Two keyboard layouts were used in the attentive group:
+#
+# Original keyboard:
+#   "l" = grammatical
+#   "s" = ungrammatical
+#
+# Alternate keyboard:
+#   "m" = grammatical
+#   "d" = ungrammatical
+#
+# Response correctness is recalculated to verify that both keyboard
+# layouts were scored correctly in the original data.
 
 data_100 <- data_100 %>%
   mutate(
@@ -176,15 +270,37 @@ data_100 <- data_100 %>%
     )
   )
 
+#--------------------------------------------------
+# Check recalculated response correctness
+#--------------------------------------------------
+
+# Compare the original and recalculated correctness values.
+# The expected result is that the values match for all trials.
 table(
   original = data_100$response_correct,
   recalculated = data_100$response_correct_new,
   useNA = "ifany"
 )
-# all good all is correctly calculated 
 
-#----------------------------------------
-# change the letters
+# The original and recalculated values are identical, confirming
+# that response_correct was scored correctly for all participants.
+# removing 
+
+data_100 <- data_100 %>%
+  select(-response_correct_new)
+
+#--------------------------------------------------
+# Standardize response keys
+#--------------------------------------------------
+
+# Convert the alternate keyboard responses to the coding used by
+# the original keyboard:
+#
+#   "m" becomes "l" for grammatical responses
+#   "d" becomes "s" for ungrammatical responses
+#
+# After this step, all participants use the same response coding.
+
 data_100 <- data_100 %>%
   mutate(
     response_type = recode(
@@ -193,6 +309,12 @@ data_100 <- data_100 %>%
       "d" = "s"
     )
   )
+
+# Check that only the standardized response keys remain.
+
+table(data_100$response_type, useNA = "ifany")
+
+#-------------------------------------------------------------
 
 #save it 
 write.csv(
